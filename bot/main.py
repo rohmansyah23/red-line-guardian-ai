@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+--#!/usr/bin/env python3--
 import tkinter as tk
 from tkinter import ttk
 from ttkthemes import ThemedTk
@@ -14,34 +14,22 @@ from pynput.mouse import Button, Controller
 from pynput.keyboard import Key, Listener
 import traceback
 
-# =============================================================================
-# KELAS LOGIKA BOT (DENGAN KESABARAN DAN FOKUS PADA TARGET)
-# Versi dioptimalkan: mengurangi pekerjaan berulang, memperbaiki lifecycle, dan
-# mengumpulkan operasi mouse/klik menjadi helper.
-# =============================================================================
 class GameBot:
     def __init__(self, debug: bool = False):
-        # area_game: dict with keys top,left,width,height
         self.area_game = {}
         self.is_paused = True
         self.stop_event = threading.Event()
         self.status_text = "Menunggu"
         self.display_level = "Medium"
         self.keputusan = "DIAM"
-
-        # drawing/setup state
         self.drawing = False
         self.ix = self.iy = -1
         self.full_screenshot_img = None
         self.setup_complete = False
-
-        # color thresholds (BGR)
         self.putih_bawah = np.array([160, 160, 160], dtype=np.uint8)
         self.putih_atas = np.array([255, 255, 255], dtype=np.uint8)
         self.merah_bawah = np.array([0, 0, 189], dtype=np.uint8)
         self.merah_atas = np.array([0, 0, 189], dtype=np.uint8)
-
-        # PID-ish control params and presets
         self.intelligence_presets = {
             "Low": (0.08, 0.10, 30),
             "Medium": (0.15, 0.25, 60),
@@ -51,34 +39,19 @@ class GameBot:
         self.P_FACTOR, self.D_FACTOR, self.TARGET_FPS = self.intelligence_presets["Medium"]
         self.FRAME_TIME = 1.0 / self.TARGET_FPS
         self.last_error = 0
-
-        # click timing
         self.click_delay = 1.5
         self.use_random_delay = False
         self.random_delay_min = 1.1
         self.random_delay_max = 1.5
-
-        # misc
         self.scaling_factor = 0.5
         self.stuck_timer_start = 0
         self.recovery_timeout = 30
-
-        # mouse controller
         self.mouse = Controller()
-
-        # runtime state
         self.waiting_for_state_change_after_click = False
         self.resume_action_pending = False
-
-        # resource reuse
         self._sct = None
-
-        # debugging
         self.debug = debug
 
-    # -------------------------
-    # Setup area with OpenCV
-    # -------------------------
     def _select_area_callback(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             self.drawing = True
@@ -99,10 +72,6 @@ class GameBot:
                 cv2.destroyAllWindows()
 
     def setup_manual(self):
-        """
-        Tampilkan screenshot fullscreen dan biarkan user klik+drag untuk memilih area.
-        Mengembalikan dict area jika selesai, atau None kalau dibatalkan.
-        """
         self.setup_complete = False
         try:
             with mss.mss() as sct:
@@ -126,15 +95,13 @@ class GameBot:
 
         while not self.setup_complete and cv2.getWindowProperty('Setup: Klik dan Seret Area', cv2.WND_PROP_VISIBLE) >= 1:
             # small wait to give CPU breathing space
-            if cv2.waitKey(10) & 0xFF == 27:  # ESC untuk batal
+            if cv2.waitKey(10) & 0xFF == 27:  
+            # ESC untuk batal
                 break
 
         cv2.destroyAllWindows()
         return self.area_game if self.setup_complete else None
 
-    # -------------------------
-    # Utility helpers
-    # -------------------------
     def set_intelligence(self, level_name: str):
         if level_name == "Random":
             self.display_level = "Random"
@@ -168,7 +135,6 @@ class GameBot:
         return self.click_delay
 
     def _click_center(self):
-        """Click safely in the center of area_game."""
         try:
             cx = self.area_game['left'] + (self.area_game['width'] // 2)
             cy = self.area_game['top'] + (self.area_game['height'] // 2)
@@ -179,17 +145,9 @@ class GameBot:
             if self.debug:
                 print("Error saat melakukan klik:", e)
 
-    # -------------------------
-    # Analisis state permainan
-    # -------------------------
     def analyze_game_state(self, img_bgr):
-        """
-        Mengembalikan satu dari: "BERMAIN", "MENUNGGU", "PERLU_KLIK".
-        Menggunakan operasi pada frame berukuran apa pun (full atau scaled).
-        """
-        # gunakan countNonZero daripada np.sum untuk kecepatan dan akurasi threshold
         mask_putih = cv2.inRange(img_bgr, self.putih_bawah, self.putih_atas)
-        putih_ditemukan = int(cv2.countNonZero(mask_putih)) > 500  # threshold lebih konservatif pada scaled
+        putih_ditemukan = int(cv2.countNonZero(mask_putih)) > 500  
         mask_merah = cv2.inRange(img_bgr, self.merah_bawah, self.merah_atas)
         merah_ditemukan = int(cv2.countNonZero(mask_merah)) > 30
 
@@ -200,11 +158,7 @@ class GameBot:
         else:
             return "PERLU_KLIK"
 
-    # -------------------------
-    # Loop utama bot
-    # -------------------------
     def run(self):
-        # reuse mss instance for performance
         if self._sct is None:
             self._sct = mss.mss()
 
@@ -223,31 +177,24 @@ class GameBot:
                     time.sleep(0.1)
                     continue
 
-                # grab once per loop
                 try:
                     screenshot = self._sct.grab(self.area_game)
                 except Exception as e:
-                    # jika gagal mengambil screenshot, coba ulang beberapa kali
                     if self.debug:
                         print("Gagal grab area:", e)
                     time.sleep(0.1)
                     continue
 
-                # BGRA -> BGR (slice cukup, mss format BGRA)
                 frame = np.array(screenshot)[:, :, :3]
-                # downscale untuk sebagian besar analisis (lebih cepat)
                 small_frame = cv2.resize(frame, (0, 0), fx=self.scaling_factor, fy=self.scaling_factor, interpolation=cv2.INTER_LINEAR)
 
-                # gunakan scaled frame untuk analisis keseluruhan (threshold tetap valid)
                 game_state = self.analyze_game_state(small_frame)
 
-                # stuck recovery: jika sudah lama dan masih membutuhkan klik -> klik pemulihan
                 if self.stuck_timer_start != 0 and (time.monotonic() - self.stuck_timer_start > self.recovery_timeout):
                     if game_state == "PERLU_KLIK":
                         self.status_text = "Pemulihan..."
                         if self.debug:
                             print(f"Bot tampaknya macet selama {self.recovery_timeout} detik. Melakukan klik pemulihan...")
-                        # release untuk menjaga keadaan mouse
                         try:
                             self.mouse.release(Button.left)
                         except Exception:
@@ -255,7 +202,6 @@ class GameBot:
                         self._click_center()
                         time.sleep(0.5)
                         self.stuck_timer_start = time.monotonic()
-                        # lanjut loop tanpa perhitungan kontrol
                         elapsed_time = time.monotonic() - frame_start_time
                         sleep_time = self.FRAME_TIME - elapsed_time
                         if sleep_time > 0:
@@ -264,7 +210,6 @@ class GameBot:
                     else:
                         self.stuck_timer_start = 0
 
-                # resume pending handling
                 if self.resume_action_pending:
                     self.resume_action_pending = False
                     if game_state == "PERLU_KLIK" and not is_in_cooldown:
@@ -280,7 +225,6 @@ class GameBot:
                 if game_state != "PERLU_KLIK":
                     self.waiting_for_state_change_after_click = False
 
-                # STATE: BERMAIN -> tracking white + red (gunakan small_frame untuk kecepatan)
                 if game_state == "BERMAIN":
                     self.stuck_timer_start = 0
                     self.status_text = "Bermain..."
@@ -290,7 +234,6 @@ class GameBot:
                     kontur_putih, _ = cv2.findContours(mask_putih, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                     posisi_putih_x = -1
                     if kontur_putih:
-                        # pilih kontur terbesar yang signifikan
                         c = max(kontur_putih, key=cv2.contourArea)
                         area = cv2.contourArea(c)
                         if area > 20:
@@ -298,12 +241,10 @@ class GameBot:
                             if M.get("m00", 0) != 0:
                                 posisi_putih_x = int((M["m10"] / M["m00"]) / self.scaling_factor)
 
-                    # detect red vertical line-ish shapes
                     mask_merah = cv2.inRange(small_frame, self.merah_bawah, self.merah_atas)
                     kontur_merah, _ = cv2.findContours(mask_merah, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                     posisi_merah_x = -1
                     min_height = small_frame.shape[0] * 0.8
-                    # pilih kontur yang tinggi dan sempit
                     line_contours = []
                     for cnt in kontur_merah:
                         x, y, w, h = cv2.boundingRect(cnt)
@@ -322,7 +263,6 @@ class GameBot:
                         control_output = (error * self.P_FACTOR) + (derivative * self.D_FACTOR)
                         self.last_error = error
                         self.keputusan = "DIAM"
-                        # threshold kecil untuk mengurangi jitter
                         if control_output > 1.0:
                             self.keputusan = "KLIK"
                             try:
@@ -338,7 +278,6 @@ class GameBot:
                     else:
                         self.keputusan = "Mencari target..."
 
-                # STATE: MENUNGGU
                 elif game_state == "MENUNGGU":
                     self.stuck_timer_start = 0
                     self.status_text = "Countdown (DIAM!)"
@@ -348,7 +287,6 @@ class GameBot:
                     except Exception:
                         pass
 
-                # STATE: PERLU_KLIK
                 elif game_state == "PERLU_KLIK":
                     self.status_text = "Perlu Klik..."
                     if not is_in_cooldown and not self.waiting_for_state_change_after_click:
@@ -363,7 +301,6 @@ class GameBot:
                         is_in_cooldown = True
                         cooldown_end_time = time.monotonic() + current_delay
 
-                # cooldown selesai -> lakukan klik
                 if is_in_cooldown and time.monotonic() >= cooldown_end_time:
                     self.status_text = "Mengklik..."
                     if self.debug:
@@ -379,26 +316,22 @@ class GameBot:
                     self.waiting_for_state_change_after_click = True
                     is_in_cooldown = False
 
-                    # jika mode random intelligence, ganti parameter pid+fps acak
                     if is_random_mode:
                         random_level = random.choice(list(self.intelligence_presets.keys()))
                         self.P_FACTOR, self.D_FACTOR, self.TARGET_FPS = self.intelligence_presets[random_level]
                         self.FRAME_TIME = 1.0 / self.TARGET_FPS
                         self.display_level = f"Random ({random_level})"
 
-                # maintain target fps
                 elapsed_time = time.monotonic() - frame_start_time
                 sleep_time = self.FRAME_TIME - elapsed_time
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
         except Exception as e:
-            # log unexpected error
             print("Error di thread bot:", e)
             if self.debug:
                 traceback.print_exc()
         finally:
-            # release mouse state cleanly
             try:
                 self.mouse.release(Button.left)
             except Exception:
@@ -406,9 +339,6 @@ class GameBot:
             if self.debug:
                 print("Thread Bot telah berhenti.")
 
-# =============================================================================
-# KELAS APLIKASI GUI (Tidak ada perubahan besar pada fungsionalitas)
-# =============================================================================
 class BotApp:
     def __init__(self, root):
         self.root = root
@@ -417,11 +347,10 @@ class BotApp:
         self.root.minsize(420, 360)
         self.root.resizable(False, False)
 
-        self.bot = GameBot(debug=False)  # set True untuk log lebih detail
+        self.bot = GameBot(debug=False)
         self.bot_thread = None
         self.config_file = "area_config.json"
 
-        # UI vars
         self.area_label_var = tk.StringVar(value="Area belum dipilih")
         self.status_var = tk.StringVar(value="Status: Menunggu")
         self.level_var = tk.StringVar(value="Level: Medium")
@@ -496,7 +425,6 @@ class BotApp:
                 print(f"Error memuat config: {e}")
 
     def select_area(self):
-        # minimize root while selecting
         self.root.withdraw()
         time.sleep(0.2)
         selected_area = self.bot.setup_manual()
@@ -542,7 +470,6 @@ class BotApp:
             return
 
         if self.bot_thread and self.bot_thread.is_alive():
-            # currently running thread -> toggle pause/resume
             if self.bot.is_paused:
                 print("Melanjutkan bot...")
                 self.bot.resume_action_pending = True
@@ -560,7 +487,6 @@ class BotApp:
                 if not self.random_delay_var.get():
                     self.delay_slider.config(state='normal')
         else:
-            # start for first time
             print("Memulai bot untuk pertama kali...")
             self.bot.is_paused = False
             self.bot.stop_event.clear()
@@ -583,7 +509,6 @@ class BotApp:
         print("Menutup aplikasi...")
         if self.keyboard_listener:
             self.keyboard_listener.stop()
-        # request bot stop and wait a short time
         if self.bot_thread and self.bot_thread.is_alive():
             self.bot.stop_event.set()
             self.bot_thread.join(timeout=1.0)

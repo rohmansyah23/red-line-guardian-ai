@@ -11,9 +11,9 @@ pygame.display.set_caption("Game Jaga Garis Merah (Warna Dinamis)")
 
 WARNA_LATAR = (0, 0, 0)
 WARNA_PUTIH = (255, 255, 255)
-WARNA_PUTIH_TIDAK_SELARAS = (170, 170, 170)  # #AAAAAA
+WARNA_PUTIH_TIDAK_SELARAS = (170, 170, 170)  
 WARNA_MERAH = (189, 0, 0)
-WARNA_KOTAK_PENGECOH = (190, 0, 0)  # #FF0000
+WARNA_KOTAK_PENGECOH = (190, 0, 0)  
 
 lebar_bar_putih, lebar_garis_merah = 150, 5
 bar_putih = pygame.Rect(0, 0, lebar_bar_putih, SCREEN_HEIGHT)
@@ -44,7 +44,6 @@ waktu_mulai_ronde, durasi_ronde = 0, 0
 time_unaligned_start = 0
 is_aligned = False
 
-# Flag untuk menandai apakah ronde berakhir karena gagal
 last_round_failed = False
 
 font_utama = pygame.font.Font(None, 50)
@@ -55,7 +54,6 @@ def start_new_round():
     global game_status, waktu_mulai_ronde, durasi_ronde, time_unaligned_start, kecepatan_garis_merah
     global kecepatan_kotak_pengecoh_x, kecepatan_kotak_pengecoh_y, last_round_failed
 
-    # reset flag gagal saat memulai ronde baru
     last_round_failed = False
 
     bar_putih.x = random.randint(0, SCREEN_WIDTH - lebar_bar_putih)
@@ -92,14 +90,11 @@ while True:
             elif game_status == 'prompt_next_round':
                 start_countdown()
             elif game_status == 'waiting':
-                # Klik terlalu awal -> gagal
                 game_status = 'prompt_next_round'
-                # Saat klik terlalu awal, gunakan warna kotak sebagai warna ronde selesai
                 warna_ronde_selesai_acak = WARNA_KOTAK_PENGECOH
                 round_end_message = "GAGAL: KLIK TERLALU AWAL"
                 last_round_failed = True
                 print("--- GAGAL! Klik terdeteksi saat countdown! Bot terjebak! ---")
-
    
     if game_status == 'playing':
         mouse_buttons = pygame.mouse.get_pressed()
@@ -129,9 +124,7 @@ while True:
         if waktu_ronde_berlalu > durasi_ronde:
             game_status = 'prompt_next_round'
             round_end_message = "RONDE SELESAI"
-            # waktu habis = sukses, bukan gagal
             last_round_failed = False
-            # gunakan warna latar atau warna lain untuk hasil sukses
             warna_ronde_selesai_acak = WARNA_LATAR
             print("--- Waktu Habis! Anda Bertahan! Ronde Selesai ---")
 
@@ -146,7 +139,6 @@ while True:
                 if waktu_tidak_selaras > UNALIGNED_TIME_LIMIT:
                     game_status = 'prompt_next_round'
                     round_end_message = "RONDE SELESAI"
-                    # Gagal karena tidak selaras -> tandai sebagai gagal
                     last_round_failed = True
                     warna_ronde_selesai_acak = WARNA_KOTAK_PENGECOH
                     print(f"--- Gagal Bertahan lebih dari {UNALIGNED_TIME_LIMIT} detik! Ronde Selesai ---")
@@ -160,7 +152,6 @@ while True:
             kecepatan_kotak_pengecoh_y *= -1
         if time.time() - waktu_mulai_tunggu > durasi_tunggu:
             start_new_round()
-
    
     if game_status == 'start_menu':
         screen.fill(WARNA_LATAR)
@@ -173,14 +164,10 @@ while True:
 
     elif game_status == 'playing':
         screen.fill(WARNA_LATAR)
-       
-        # Ganti warna bar berdasarkan keselarasan dengan garis merah
         bar_warna_terpakai = WARNA_PUTIH if is_aligned else WARNA_PUTIH_TIDAK_SELARAS
-
         pygame.draw.rect(screen, bar_warna_terpakai, bar_putih)
         pygame.draw.rect(screen, WARNA_MERAH, garis_merah)
         pygame.draw.rect(screen, WARNA_KOTAK_PENGECOH, kotak_merah_pengecoh)
-        
         waktu_tersisa_ronde = durasi_ronde - (time.time() - waktu_mulai_ronde)
         teks_timer = font_timer.render(f"Bertahan: {int(waktu_tersisa_ronde)}s", True, WARNA_PUTIH)
         screen.blit(teks_timer, (10, 10))
@@ -191,7 +178,6 @@ while True:
             screen.blit(teks_gagal, (10, 30))
     
     elif game_status == 'prompt_next_round':
-        # Jika ronde berakhir karena gagal, fill = warna kotak; kalau tidak, gunakan warna hasil ronde yang lain
         if last_round_failed:
             screen.fill(WARNA_KOTAK_PENGECOH)
         else:
